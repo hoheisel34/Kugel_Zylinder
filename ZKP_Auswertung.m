@@ -329,3 +329,152 @@ end
         meta.nu = meta.mu / meta.rho;
     end
 end
+
+% =========================================================================
+% Aufruf: ZKP_Kugel()   (separat ausführbar)
+fprintf('=======================================================================\n');
+fprintf('  MTP Versuch ZKP – Kugelauswertung   (Messung 01.06.2026)\n');
+fprintf('=======================================================================\n\n');
+ 
+% -------------------------------------------------------------------------
+%  TAGESWERTE (identisch mit Zylinderversuch)
+% -------------------------------------------------------------------------
+rho = 1.1194;    % Luftdichte        [kg/m³]
+nu  = 1.60e-5;   % Kin. Viskosität   [m²/s]
+g_N = 9.807;     % N pro Kilopond    [N/kp]
+ 
+% -------------------------------------------------------------------------
+%  KUGELPARAMETER
+% -------------------------------------------------------------------------
+d_K = 0.250;                        % Kugeldurchmesser   [m]
+A_K = pi / 4 * d_K^2;               % Referenzfläche     [m²]
+sin_theta = 0.5;                    % Schrägrohrneigung 1:2 (sin30°)
+ 
+% -------------------------------------------------------------------------
+%  MESSWERTE
+%  Schrägrohr-Skalenteile [Pa*] → q∞ = skalen × sin(30°)
+% -------------------------------------------------------------------------
+skalen   = [80, 120, 240, 320, 360, 400, 440, 520, 600, 800, 1000, 1400];
+q_inf    = skalen * sin_theta;   % [Pa]
+ 
+% W_ges [kp] – aus WhatsApp-Bild (Notation: kp/N = x / x×10)
+W_ges_kp = [0.111, 0.148, 0.224, 0.196, 0.223, 0.253, 0.294, 0.371, ...
+            0.420, 0.536, 0.666, 0.977];
+W_ges_N  = W_ges_kp * g_N;       % Umrechnung kp → N
+ 
+% W_Aufhängung [N] – aus PDF (vom Diagramm abgelesen, Team Kom)
+W_Auf_N  = [0.28, 0.36, 0.70, 0.93, 1.07, 1.30, 1.58, 1.84, ...
+            2.12, 2.87, 3.57, 5.00];
+ 
+% Δp_Heck [Pa] – aus PDF rechte Spalte (= linke Spalte × sin30° = × 0.5)
+% Linke Spalte (Pa*): -20,-30,-20,+30,+40,+50,+70,+100,+120,+180,+220,+320
+%                      LP3 = -20 Pa* (handschriftlich abgelesen, nicht -80)
+dp_Heck_star = [-20,-30,-20,+30,+40,+50,+70,+100,+120,+180,+220,+320];
+dp_Heck      = dp_Heck_star * sin_theta;  % [Pa]
+ 
+% -------------------------------------------------------------------------
+%  BERECHNUNGEN
+% -------------------------------------------------------------------------
+W_Kugel = W_ges_N - W_Auf_N;              % Kugelwiderstand  [N]
+U_inf   = sqrt(2 * q_inf / rho);          % Anströmgeschw.   [m/s]
+Re      = U_inf * d_K / nu;               % Reynoldszahl     [-]
+cw      = W_Kugel ./ (q_inf * A_K);       % Widerstandsbeiwert
+cp_Heck = dp_Heck ./ q_inf;              % Druckbeiwert Heck
+ 
+% -------------------------------------------------------------------------
+%  KONSOLENAUSGABE
+% -------------------------------------------------------------------------
+fprintf('%-4s | %-7s | %-9s | %-9s | %-9s | %-8s | %-8s | %-9s | %-8s | %-7s\n', ...
+    'LP','q[Pa]','U[m/s]','Re','W_ges[N]','W_Auf[N]','W_K[N]','dp_H[Pa]','cw','cp');
+fprintf('%s\n', repmat('-',1,100));
+for i = 1:12
+    fprintf('%-4d | %-7.0f | %-9.2f | %-9.0f | %-9.3f | %-8.2f | %-8.3f | %-9.0f | %-8.4f | %-7.4f\n', ...
+        i, q_inf(i), U_inf(i), Re(i), W_ges_N(i), W_Auf_N(i), W_Kugel(i), dp_Heck(i), cw(i), cp_Heck(i));
+end
+ 
+% -------------------------------------------------------------------------
+%  TURBULENZFAKTOR
+% -------------------------------------------------------------------------
+Re_krit_ungest = 4.05e5;    % ungestörte kritische Re-Zahl der Kugel
+ 
+% ---- Automatische Klammersuche: welche zwei aufeinanderfolgenden LP
+%      schließen den gesuchten Schwellwert ein? ----
+cw_krit = 0.3;
+cp_krit = -0.22;
+ 
+% cw = 0.3: suche Vorzeichenwechsel von (cw - 0.3)
+i1 = find( (cw(1:end-1) - cw_krit) .* (cw(2:end) - cw_krit) < 0, 1 );
+if isempty(i1)
+    error('Kein Schnittpunkt cw = %.2f gefunden – Messdaten prüfen!', cw_krit);
+end
+i2 = i1 + 1;
+f_cw       = (cw(i1) - cw_krit) / (cw(i1) - cw(i2));
+Re_krit_cw = Re(i1) + f_cw * (Re(i2) - Re(i1));
+ 
+% cp = -0.22: suche Vorzeichenwechsel von (cp - (-0.22))
+i3 = find( (cp_Heck(1:end-1) - cp_krit) .* (cp_Heck(2:end) - cp_krit) < 0, 1 );
+if isempty(i3)
+    error('Kein Schnittpunkt cp = %.2f gefunden – Messdaten prüfen!', cp_krit);
+end
+i4 = i3 + 1;
+f_cp       = (cp_Heck(i3) - cp_krit) / (cp_Heck(i3) - cp_Heck(i4));
+Re_krit_cp = Re(i3) + f_cp * (Re(i4) - Re(i3));
+ 
+fprintf('  Klammerpaar cw: LP%d (cw=%.4f) – LP%d (cw=%.4f)\n', i1,cw(i1),i2,cw(i2));
+fprintf('  Klammerpaar cp: LP%d (cp=%.4f) – LP%d (cp=%.4f)\n', i3,cp_Heck(i3),i4,cp_Heck(i4));
+ 
+Re_krit_mean = (Re_krit_cw + Re_krit_cp) / 2;
+TF           = Re_krit_ungest / Re_krit_mean;
+ 
+fprintf('\nTURBULENZFAKTOR:\n');
+fprintf('  Re_krit aus cw = 0.3:       %.0f\n', Re_krit_cw);
+fprintf('  Re_krit aus cp = -0.22:     %.0f\n', Re_krit_cp);
+fprintf('  Mittelwert Re_krit:         %.0f\n', Re_krit_mean);
+fprintf('  TF = Re_krit,ungest / Re_krit,mess = %.0f / %.0f = %.3f\n', ...
+        Re_krit_ungest, Re_krit_mean, TF);
+ 
+% -------------------------------------------------------------------------
+%  DIAGRAMME
+% -------------------------------------------------------------------------
+colCw  = [0.12, 0.47, 0.71];
+colCp  = [0.20, 0.63, 0.17];
+lw     = 1.8;
+ 
+% --- Abbildung 3: cw und cp über Re --------------------------------------
+fig3 = figure('Name','Kugel cw und cp','Position',[120 120 920 500]);
+theme light
+hold on; box on; grid on;
+ 
+yyaxis left
+plot(Re, cw, '-o', 'Color',colCw,'LineWidth',lw,'MarkerSize',6, ...
+     'DisplayName','c_w');
+yline(0.3,'--','Color',colCw,'LineWidth',1.2,'HandleVisibility','off');
+text(Re_krit_cw, 0.3+0.02, sprintf('Re_{krit,cw} = %.0f', Re_krit_cw), ...
+     'FontSize',8,'Color',colCw,'HorizontalAlignment','center');
+ylabel('c_w [–]','Color',colCw,'FontSize',13);
+ylim([0 0.5]);
+ 
+yyaxis right
+plot(Re, cp_Heck, '-s', 'Color',colCp,'LineWidth',lw,'MarkerSize',6, ...
+     'DisplayName','c_{p,Heck}');
+yline(-0.22,'--','Color',colCp,'LineWidth',1.2,'HandleVisibility','off');
+text(Re_krit_cp, -0.22-0.03, sprintf('Re_{krit,cp} = %.0f', Re_krit_cp), ...
+     'FontSize',8,'Color',colCp,'HorizontalAlignment','center');
+yline(0,'k:','LineWidth',0.8,'HandleVisibility','off');
+ylabel('c_{p,Heck} [–]','Color',colCp,'FontSize',13);
+ylim([-0.5 0.35]);
+ 
+xline(Re_krit_mean,'k-','LineWidth',1,'HandleVisibility','off');
+text(Re_krit_mean, 0.48, sprintf('\\bar{Re}_{krit} = %.0f', Re_krit_mean), ...
+     'FontSize',9,'HorizontalAlignment','center');
+ 
+xlabel('Re [–]','FontSize',13);
+title({sprintf('Kugel – c_w und c_{p,Heck} über Reynoldszahl (d = %.0f mm)', d_K*1000), ...
+    sprintf('TF = Re_{krit,ungest} / Re_{krit,mess} = %.0f / %.0f = %.3f', ...
+            Re_krit_ungest, Re_krit_mean, TF)}, 'FontSize',11);
+legend('Location','northeast','FontSize',10);
+set(gca,'FontSize',11);
+exportgraphics(fig3,'ZKP_Kugel_cw_cp.pdf','ContentType','vector','BackgroundColor','white');
+ 
+fprintf('\nDiagramm gespeichert: ZKP_Kugel_cw_cp.pdf\n');
+fprintf('Fertig.\n\n');
